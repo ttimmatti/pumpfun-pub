@@ -11,7 +11,7 @@ import {
     TransactionSignature,
     VersionedTransaction,
 } from "@solana/web3.js";
-import {Base, TOKEN_PROGRAM_ID, WSOL} from "@raydium-io/raydium-sdk";
+import {Base, getPdaMetadataKey, TOKEN_PROGRAM_ID, WSOL} from "@raydium-io/raydium-sdk";
 import base58 from "bs58";
 import {
     ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -29,6 +29,10 @@ import {bs58} from "@project-serum/anchor/dist/cjs/utils/bytes";
 import * as buffer from "node:buffer";
 import { delayRangeSec } from "./config";
 import { promisify } from "node:util";
+import { findProgramAddressSync } from "@project-serum/anchor/dist/cjs/utils/pubkey";
+import { deserializeMetadata } from '@metaplex-foundation/mpl-token-metadata';
+
+
 
 const JITO_RPC = 'https://mainnet.block-engine.jito.wtf/api/v1'
 
@@ -952,6 +956,7 @@ class trader {
                 keys.pool_base_token_account,
                 keys.pool_quote_token_account,
                 new PublicKey(randFeeAcc),
+                keys.creator
             ),
         });
 
@@ -973,7 +978,12 @@ class trader {
     async getPoolKeys(poolId: string) {
         const poolRawData = (await this.connection.getAccountInfo(new PublicKey(poolId)))?.data;
         /*PumpSwapPool.decode(accInfo.data, 8)*/
-        return await this.parsePoolAccountData(poolRawData)
+        const poolKeys = this.parsePoolAccountData(poolRawData)
+        const metadataAccount = getPdaMetadataKey(poolKeys.base_mint)
+        const metaInfo = await this.connection.getAccountInfo(metadataAccount.publicKey)
+        const metadata = deserializeMetadata({data: metaInfo.data, publicKey: undefined, executable: false, owner: undefined, lamports: undefined}) as any
+        poolKeys.creator = metadata.creators.value[0].address
+        return poolKeys
     }
 
     async getOnchainData(
@@ -1170,6 +1180,7 @@ class trader {
         basePoolAccount: PublicKey,
         quotePoolAccount: PublicKey,
         protocolFee: PublicKey,
+        coinCreator: PublicKey
     ): AccountMeta[] {
         const protocolFeeAccount = getAssociatedTokenAddressSync(
             new PublicKey(WSOL.mint),
@@ -1177,6 +1188,14 @@ class trader {
             true,
             TOKEN_PROGRAM_ID
         )
+        const coin_creator_vault_authority = findProgramAddressSync(
+        [
+            new Uint8Array([99, 114, 101, 97, 116, 111, 114, 95, 118, 97, 117, 108, 116]),
+            new PublicKey(coinCreator).toBuffer()
+        ],
+        new PublicKey(PUMPSWAP_CONTRACT)
+        )[0]
+        const coin_creator_vault_ata = getAssociatedTokenAddressSync(new PublicKey(WSOL.mint), coin_creator_vault_authority, true, TOKEN_PROGRAM_ID)
         return [
             {pubkey: new PublicKey(pool), isWritable: false, isSigner: false},
             {pubkey: user, isWritable: true, isSigner: true},
@@ -1195,6 +1214,8 @@ class trader {
             {pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false},
             {pubkey: new PublicKey('GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR'), isWritable: false, isSigner: false},
             {pubkey: PUMPSWAP_CONTRACT, isWritable: false, isSigner: false},
+            { pubkey: coin_creator_vault_ata, isWritable: true, isSigner: false },
+            { pubkey: coin_creator_vault_authority, isWritable: false, isSigner: false },      
         ];
     }
 
@@ -1330,7 +1351,7 @@ class trader {
         };
     }
 
-    async parsePoolAccountData(rawData: Uint8Array): Promise<PoolAccountData> {
+    parsePoolAccountData(rawData: Uint8Array): PoolAccountData {
         const dataBuffer = buffer.Buffer.from(rawData);
         let offset = 8;
 
