@@ -581,6 +581,7 @@ class trader {
             let initialBaseReserves: bigint;
             let initialQuoteReserves: bigint;
             let decimals: number;
+            let creatorVault: PublicKey;
 
             let bondingCurve: PublicKey | undefined
 
@@ -591,6 +592,12 @@ class trader {
                 );
 
                 const curveData = await this.getOnchainData(mint, bondingCurve);
+                
+                creatorVault = findProgramAddressSync(
+                    [Buffer.from("creator-vault"), new PublicKey(curveData.creator).toBuffer()],
+                    new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P')
+                )[0]
+                
                 initialBaseReserves = curveData.virtualTokenReserves;
                 initialQuoteReserves = curveData.virtualSolReserves;
                 decimals = curveData.decimals;
@@ -635,6 +642,7 @@ class trader {
                     minAmountOut,
                     mint,
                     bondingCurve,
+                    creatorVault,
                     keypair.publicKey,
                     priceLimit,
                     unitsLimit
