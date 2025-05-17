@@ -68,6 +68,7 @@ interface CurveDataNoDecimals {
     realSolReserves: bigint;
     tokenTotalSupply: bigint;
     complete: boolean;
+    creator: PublicKey;
 }
 
 interface ParsedMintAccount {
@@ -707,6 +708,7 @@ class trader {
             let initialBaseReserves: bigint;
             let initialQuoteReserves: bigint;
             let decimals: number;
+            let creatorVault: PublicKey;
 
             if (isPumpFun) {
                 mint = new PublicKey(quoteMint);
@@ -716,6 +718,12 @@ class trader {
                 );
 
                 const curveData = await this.getOnchainData(mint, bondingCurve);
+
+                creatorVault = findProgramAddressSync(
+                    [Buffer.from("creator-vault"), new PublicKey(curveData.creator).toBuffer()],
+                    new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P')
+                )[0]
+                  
                 initialBaseReserves = curveData.virtualTokenReserves;
                 initialQuoteReserves = curveData.virtualSolReserves;
                 decimals = curveData.decimals;
@@ -765,6 +773,7 @@ class trader {
                     minAmountOut,
                     mint,
                     bondingCurve,
+                    creatorVault,
                     keypair.publicKey,
                     priceLimit,
                     unitsLimit
@@ -1058,6 +1067,7 @@ class trader {
         amountOutMin: bigint,
         mint: PublicKey,
         bondingCurve: PublicKey,
+        creatorVault: PublicKey,
         payer: PublicKey,
         priceLimit: number,
         unitsLimit: number
@@ -1076,6 +1086,7 @@ class trader {
                 buy,
                 mint,
                 bondingCurve,
+                creatorVault,
                 ataTokenpayer,
                 payer
             ),
@@ -1167,6 +1178,7 @@ class trader {
             realSolReserves: data.readBigUInt64LE(from + 24),
             tokenTotalSupply: data.readBigUInt64LE(from + 32),
             complete: data.readUInt8(from + 40) !== 0,
+            creator: new PublicKey(data.slice(from+41, from+41+32))
         };
     }
 
@@ -1223,6 +1235,7 @@ class trader {
         buy: boolean,
         mint: PublicKey,
         bondingCurve: PublicKey,
+        creatorVault: PublicKey,
         ataTokenpayer: PublicKey,
         user: PublicKey
     ): AccountMeta[] {
@@ -1250,7 +1263,7 @@ class trader {
                 {pubkey: new PublicKey('11111111111111111111111111111111'), isWritable: false, isSigner: false},
                 {pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false},
                 {
-                    pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'),
+                    pubkey: creatorVault,
                     isWritable: false,
                     isSigner: false
                 },
@@ -1279,7 +1292,7 @@ class trader {
                 {pubkey: ataTokenpayer, isWritable: true, isSigner: false},
                 {pubkey: user, isWritable: true, isSigner: true},
                 {pubkey: new PublicKey('11111111111111111111111111111111'), isWritable: false, isSigner: false},
-                {pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isWritable: false, isSigner: false},
+                {pubkey: creatorVault, isWritable: false, isSigner: false},
                 {pubkey: TOKEN_PROGRAM_ID, isWritable: false, isSigner: false},
                 {
                     pubkey: new PublicKey('Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1'),
